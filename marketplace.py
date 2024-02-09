@@ -52,19 +52,19 @@ class Wildberries(Marketplace):
                 self.headers = {
                     "Authorization": f"{self.token}",
                 }
-                self._logger.info("Wildberries is initialized")
+                self._logger.debug("Wildberries is initialized")
                 break
         if not hasattr(self, "warehouse_id"):
-            self._logger.error("Wildberries is not initialized")
-            raise Exception("Token not found")
+            self._logger.error("Warehouse id is not found")
+            raise Exception("Warehouse id is not found")
 
     def get_stock(self, ms_id):
         try:
-            data = self.get_mapped_data(ms_id)
+            data = self.get_mapped_data(ms_id, 0)
             resp = self._session.post(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
-                    "skus": [data["barcodes"]],
+                    "skus": [data[0].barcodes],
                 },
                 headers=self.headers,
             )
@@ -107,7 +107,7 @@ class Wildberries(Marketplace):
             if len(ids) != len(values):
                 raise ValueError("ids and values should have the same length")
 
-            if len(ids) > settings.WB_STOCK_REFRESH_LIMIT:
+            if len(ids) > settings.WB_ITEMS_REFRESH_LIMIT:
                 chunks_ids, chunks_values = self.get_chunks(ids, values)
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                     self.refresh_stocks(chunk_ids, chunk_values)
@@ -127,7 +127,6 @@ class Wildberries(Marketplace):
                 headers=self.headers,
             )
             resp.raise_for_status()
-            self._logger.info(f"Wildberries: {ids} stock is refreshed")
             return True
         except HTTPError as e:
             self._logger.error(f"Wildberries: {ids} stock is not refreshed. Error: {e}")
@@ -137,7 +136,6 @@ class Wildberries(Marketplace):
         resp = self._session.get(
             f"{settings.wb_api_url}public/api/v1/info", headers=self.headers
         )
-
         return {price["nmId"]: price["price"] for price in resp.json()}
 
     def refresh_price(self, ms_id, value):
@@ -164,7 +162,7 @@ class Wildberries(Marketplace):
         if len(ids) != len(values):
             raise ValueError("ids and values should have the same length")
 
-        if len(ids) > settings.WB_STOCK_REFRESH_LIMIT:
+        if len(ids) > settings.WB_ITEMS_REFRESH_LIMIT:
             chunks_ids, chunks_values = self.get_chunks(ids, values)
             for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                 self.refresh_price(chunk_ids, chunk_values)
@@ -232,21 +230,17 @@ class Wildberries(Marketplace):
             self.refresh_status(ids[i], values[i])
 
     @staticmethod
-    # @overload
     def get_mapped_data(
         ms_ids: Union[str, List[str]], values: Union[int, List[int]]
     ) -> List[MsItem]:
         resp = requests.get(
             f"{settings.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
         )
-        print(resp.status_code)
-        print(resp.json())
 
         if isinstance(ms_ids, str):
             print("str")
             return [MsItem(**resp.json()[0], value=values)]
 
-        # mapping returns data in different order, we have to ensure that values correspond to ms_ids
         id_value_map = dict(zip(ms_ids, values))
 
         mapped_data = []
@@ -256,21 +250,14 @@ class Wildberries(Marketplace):
             mapped_data.append(MsItem(**item))
         return mapped_data
 
-    # @staticmethod
-    # def get_mapped_data(ms_id: str, value: int) -> MsItem:
-    #     resp = requests.get(
-    #         f"{settings.bgd_mapping_url}", params={"ms_id": ms_id}
-    #     )
-    #     return MsItem(**resp.json(), value=value)
-
     @staticmethod
     def get_chunks(ids, values):
         chunks_ids = [
-            ids[i : i + settings.WB_STOCK_REFRESH_LIMIT]
-            for i in range(0, len(ids), settings.WB_STOCK_REFRESH_LIMIT)
+            ids[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
+            for i in range(0, len(ids), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         chunks_values = [
-            values[i : i + settings.WB_STOCK_REFRESH_LIMIT]
-            for i in range(0, len(values), settings.WB_STOCK_REFRESH_LIMIT)
+            values[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
+            for i in range(0, len(values), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         return chunks_ids, chunks_values
