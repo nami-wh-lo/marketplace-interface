@@ -10,6 +10,8 @@ python = "^3.10"
 requests = "^2.31.0"
 python-dotenv = "^1.0.1"
 black = "^24.1.1"
+pydantic = "^2.6.1"
+ruff = "^0.2.1"
 
 
 [build-system]
