@@ -101,18 +101,18 @@ class Wildberries(Marketplace):
             )
             raise e
 
-    def refresh_stocks(self, ids: list[str], values: list[int]):
+    def refresh_stocks(self, ms_ids: list[str], values: list[int]):
         try:
             json_data = []
-            if len(ids) != len(values):
+            if len(ms_ids) != len(values):
                 raise ValueError("ids and values should have the same length")
 
-            if len(ids) > settings.WB_ITEMS_REFRESH_LIMIT:
-                chunks_ids, chunks_values = self.get_chunks(ids, values)
+            if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
+                chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                     self.refresh_stocks(chunk_ids, chunk_values)
 
-            for item in self.get_mapped_data(ids, values):
+            for item in self.get_mapped_data(ms_ids, values):
                 json_data.append(
                     {
                         "sku": item.barcodes,
@@ -129,7 +129,7 @@ class Wildberries(Marketplace):
             resp.raise_for_status()
             return True
         except HTTPError as e:
-            self._logger.error(f"Wildberries: {ids} stock is not refreshed. Error: {e}")
+            self._logger.error(f"Wildberries: {ms_ids} stock is not refreshed. Error: {e}")
             raise e
 
     def get_price(self):
@@ -158,18 +158,18 @@ class Wildberries(Marketplace):
             )
             raise e
 
-    def refresh_prices(self, ids: list[str], values: list[int]):
-        if len(ids) != len(values):
+    def refresh_prices(self, ms_ids: list[str], values: list[int]):
+        if len(ms_ids) != len(values):
             raise ValueError("ids and values should have the same length")
 
-        if len(ids) > settings.WB_ITEMS_REFRESH_LIMIT:
-            chunks_ids, chunks_values = self.get_chunks(ids, values)
+        if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
+            chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
             for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                 self.refresh_price(chunk_ids, chunk_values)
 
         initial_prices = self.get_price()
         items_to_reprice = []
-        for item in self.get_mapped_data(ids, values):
+        for item in self.get_mapped_data(ms_ids, values):
             items_to_reprice.append(
                 WbUpdateItem(
                     **item.dict(),
@@ -186,11 +186,9 @@ class Wildberries(Marketplace):
             if item.current_value * 2 < item.value:
                 json_data.append(
                     {
-                        {
-                            "nmId": item.nm_id,
-                            "price": item.current_value * 2,
-                        },
-                    }
+                        "nmId": item.nm_id,
+                        "price": item.current_value * 2,
+                    },
                 )
                 items_to_reprice.append(
                     WbUpdateItem(
@@ -205,19 +203,17 @@ class Wildberries(Marketplace):
             else:
                 json_data.append(
                     {
-                        {
-                            "nmId": item.nm_id,
-                            "price": item.value,
-                        },
-                    }
+                        "nmId": item.nm_id,
+                        "price": item.value,
+                    },
                 )
         resp = requests.post(
             f"{settings.wb_api_url}public/api/v1/prices",
             headers=self.headers,
             json=json_data,
         )
-        self._logger.info(f"response: {resp.status_code} {resp.json()}")
         resp.raise_for_status()
+        self._logger.info(f"response: {resp.status_code} {resp.json()}")
         if items_to_reprice:
             self._update_prices(items_to_reprice)
         return resp.json()
@@ -238,7 +234,6 @@ class Wildberries(Marketplace):
         )
 
         if isinstance(ms_ids, str):
-            print("str")
             return [MsItem(**resp.json()[0], value=values)]
 
         id_value_map = dict(zip(ms_ids, values))
