@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Union
+from typing import List
 
 from requests import HTTPError
 
@@ -40,18 +40,21 @@ class Wildberries(Marketplace):
     def __init__(self, token_id):
         self._logger = get_logger()
         self._session = requests.Session()
-        headers = {
-            "Authorization": f"Token {settings.bgd_token}",
-        }
-        response = self._session.get(settings.bgd_token_url, headers=headers)
+        response = self._session.get(
+            settings.bgd_token_url,
+            headers={
+                "Authorization": f"Token {settings.bgd_token}",
+            },
+        )
         for i in response.json():
             warehouse_id = i["warehouse_id"]
             if warehouse_id and i["id"] == token_id:
                 self.warehouse_id = warehouse_id
-                self.token = i["common_token"]
-                self.headers = {
-                    "Authorization": f"{self.token}",
-                }
+                self._session.headers.update(
+                    {
+                        "Authorization": f"{i['common_token']}",
+                    }
+                )
                 self._logger.debug("Wildberries is initialized")
                 break
         if not hasattr(self, "warehouse_id"):
@@ -60,37 +63,35 @@ class Wildberries(Marketplace):
 
     def get_stock(self, ms_id):
         try:
-            data = self.get_mapped_data(ms_id, 0)
+            data = self.get_mapped_data([ms_id], [0])[0]
             resp = self._session.post(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
-                    "skus": [data[0].barcodes],
+                    "skus": [data.barcodes],
                 },
-                headers=self.headers,
             )
             resp.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
-            return True
+            return resp.json()
         except HTTPError as e:
             self._logger.error(
                 f"Wildberries: {ms_id} stock is not refreshed. Error: {e}"
             )
             raise e
 
-    def refresh_stock(self, ms_id, value):
+    def refresh_stock(self, ms_id: str, value: int):
         try:
-            data = self.get_mapped_data(ms_id, value)
+            data = self.get_mapped_data([ms_id], [value])[0]
             resp = self._session.put(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
                     "stocks": [
                         {
-                            "sku": data[0].barcodes,
+                            "sku": data.barcodes,
                             "amount": value,
                         },
                     ]
                 },
-                headers=self.headers,
             )
             resp.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
@@ -101,12 +102,11 @@ class Wildberries(Marketplace):
             )
             raise e
 
-    def refresh_stocks(self, ms_ids: list[str], values: list[int]):
+    def refresh_stocks(self, ms_ids: List[str], values: List[int]):
         try:
             json_data = []
             if len(ms_ids) != len(values):
                 raise ValueError("ids and values should have the same length")
-
             if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
                 chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
@@ -124,23 +124,22 @@ class Wildberries(Marketplace):
                 json={
                     "stocks": json_data,
                 },
-                headers=self.headers,
             )
             resp.raise_for_status()
             return True
         except HTTPError as e:
-            self._logger.error(f"Wildberries: {ms_ids} stock is not refreshed. Error: {e}")
+            self._logger.error(
+                f"Wildberries: {ms_ids} stock is not refreshed. Error: {e}"
+            )
             raise e
 
     def get_price(self):
-        resp = self._session.get(
-            f"{settings.wb_api_url}public/api/v1/info", headers=self.headers
-        )
+        resp = self._session.get(f"{settings.wb_api_url}public/api/v1/info")
         return {price["nmId"]: price["price"] for price in resp.json()}
 
-    def refresh_price(self, ms_id, value):
+    def refresh_price(self, ms_id: str, value: int):
         try:
-            data = self.get_mapped_data(ms_id, value)[0]
+            data = self.get_mapped_data([ms_id], [value])[0]
 
             initial_price = self.get_price().get(data.nm_id)
 
@@ -158,7 +157,7 @@ class Wildberries(Marketplace):
             )
             raise e
 
-    def refresh_prices(self, ms_ids: list[str], values: list[int]):
+    def refresh_prices(self, ms_ids: List[str], values: List[int]):
         if len(ms_ids) != len(values):
             raise ValueError("ids and values should have the same length")
 
@@ -207,9 +206,8 @@ class Wildberries(Marketplace):
                         "price": item.value,
                     },
                 )
-        resp = requests.post(
+        resp = self._session.post(
             f"{settings.wb_api_url}public/api/v1/prices",
-            headers=self.headers,
             json=json_data,
         )
         resp.raise_for_status()
@@ -221,20 +219,20 @@ class Wildberries(Marketplace):
     def refresh_status(self, ms_id, value):
         print(f"Wildberries: {ms_id} status is {value}")
 
-    def refresh_statuses(self, ids: list[str], values: list[int]):
+    def refresh_statuses(self, ids: List[str], values: List[int]):
         for i in range(len(ids)):
             self.refresh_status(ids[i], values[i])
 
     @staticmethod
     def get_mapped_data(
-        ms_ids: Union[str, List[str]], values: Union[int, List[int]]
+        ms_ids: List[str], values: List[int]
     ) -> List[MsItem]:
         resp = requests.get(
             f"{settings.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
         )
 
-        if isinstance(ms_ids, str):
-            return [MsItem(**resp.json()[0], value=values)]
+        if len(ms_ids) == 1:
+            return [MsItem(**resp.json()[0], value=values[0])]
 
         id_value_map = dict(zip(ms_ids, values))
 
@@ -244,6 +242,7 @@ class Wildberries(Marketplace):
             item["value"] = value
             mapped_data.append(MsItem(**item))
         return mapped_data
+
 
     @staticmethod
     def get_chunks(ids, values):
