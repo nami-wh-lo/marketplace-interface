@@ -224,9 +224,7 @@ class Wildberries(Marketplace):
             self.refresh_status(ids[i], values[i])
 
     @staticmethod
-    def get_mapped_data(
-        ms_ids: List[str], values: List[int]
-    ) -> List[MsItem]:
+    def get_mapped_data(ms_ids: List[str], values: List[int]) -> List[MsItem]:
         resp = requests.get(
             f"{settings.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
         )
@@ -242,7 +240,6 @@ class Wildberries(Marketplace):
             item["value"] = value
             mapped_data.append(MsItem(**item))
         return mapped_data
-
 
     @staticmethod
     def get_chunks(ids, values):
