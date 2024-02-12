@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from requests import HTTPError
 
@@ -192,12 +192,33 @@ class Wildberries(Marketplace):
             self._update_prices(items_to_reprice)
         return resp.json()
 
-    def refresh_status(self, ms_id, value):
-        print(f"Wildberries: {ms_id} status is {value}")
+    def refresh_status(self, wb_order_id: int, status_name: str, supply_id: int = None):
+        match status_name:
+            case "confirm":
+                supply_id = supply_id or self._session.post(
+                    f"{settings.wb_api_url}api/v3/supplies",
+                    json={"name": f"supply_order{wb_order_id}"},
+                ).json().get("id")
+                add_order_to_supply_resp = requests.patch(
+                    f"{settings.wb_api_url}api/v3/supplies{supply_id}/orders/{wb_order_id}",
+                )
+                add_order_to_supply_resp.raise_for_status()
+            case "cancel":
+                cancel_order_resp = requests.patch(
+                    f"{settings.wb_api_url}api/v3/supplies/{wb_order_id}/cancel"
+                )
+                cancel_order_resp.raise_for_status()
+            case _:
+                raise ValueError("Status name is not valid")
+        return True
 
-    def refresh_statuses(self, ids: List[str], values: List[int]):
-        for i in range(len(ids)):
-            self.refresh_status(ids[i], values[i])
+    def refresh_statuses(self, orders: List[Dict[int, str]]):
+        new_supply = self._session.post(
+            f"{settings.wb_api_url}api/v3/supplies",
+            json={"name": f"supply_orders"},
+        ).json()
+        for order in orders:
+            self.refresh_status(**order, supply_id=new_supply.get("id"))
 
     @staticmethod
     def get_mapped_data(ms_ids: List[str], values: List[int]) -> List[MsItem]:
@@ -220,11 +241,11 @@ class Wildberries(Marketplace):
     @staticmethod
     def get_chunks(ids, values):
         chunks_ids = [
-            ids[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
+            ids[i: i + settings.WB_ITEMS_REFRESH_LIMIT]
             for i in range(0, len(ids), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         chunks_values = [
-            values[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
+            values[i: i + settings.WB_ITEMS_REFRESH_LIMIT]
             for i in range(0, len(values), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         return chunks_ids, chunks_values
