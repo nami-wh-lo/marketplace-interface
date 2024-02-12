@@ -1,23 +1,24 @@
-from typing import List, Dict
+from typing import List
 
 from requests import HTTPError
 
-from config import settings
 import requests
 
-from logger import get_logger
-from marketplace import Marketplace
-from schemas import MsItem, WbUpdateItem
+from .logger import get_logger
+from .config import settings
+from .marketplace import Marketplace
+from .schemas import MsItem, WbUpdateItem
 
 
 class Wildberries(Marketplace):
-    def __init__(self, token_id):
+    def __init__(self, token_id, bgd_token, bgd_token_url, bgd_mapping_url):
+        self.bgd_mapping_url = bgd_mapping_url
         self._logger = get_logger()
         self._session = requests.Session()
         response = self._session.get(
-            settings.bgd_token_url,
+            bgd_token_url,
             headers={
-                "Authorization": f"Token {settings.bgd_token}",
+                "Authorization": f"Token {bgd_token}",
             },
         )
         for i in response.json():
@@ -37,7 +38,7 @@ class Wildberries(Marketplace):
 
     def get_stock(self, ms_id):
         try:
-            data = self.get_mapped_data([ms_id], [0])[0]
+            data = self._get_mapped_data([ms_id], [0])[0]
             resp = self._session.post(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
@@ -55,7 +56,7 @@ class Wildberries(Marketplace):
 
     def refresh_stock(self, ms_id: str, value: int):
         try:
-            data = self.get_mapped_data([ms_id], [value])[0]
+            data = self._get_mapped_data([ms_id], [value])[0]
             resp = self._session.put(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
@@ -86,7 +87,7 @@ class Wildberries(Marketplace):
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                     self.refresh_stocks(chunk_ids, chunk_values)
 
-            for item in self.get_mapped_data(ms_ids, values):
+            for item in self._get_mapped_data(ms_ids, values):
                 json_data.append(
                     {
                         "sku": item.barcodes,
@@ -113,7 +114,7 @@ class Wildberries(Marketplace):
 
     def refresh_price(self, ms_id: str, value: int):
         try:
-            data = self.get_mapped_data([ms_id], [value])[0]
+            data = self._get_mapped_data([ms_id], [value])[0]
 
             initial_price = self.get_price().get(data.nm_id)
 
@@ -143,7 +144,7 @@ class Wildberries(Marketplace):
 
         initial_prices = self.get_price()
         items_to_reprice = []
-        for item in self.get_mapped_data(ms_ids, values):
+        for item in self._get_mapped_data(ms_ids, values):
             items_to_reprice.append(
                 WbUpdateItem(
                     **item.dict(),
@@ -224,10 +225,9 @@ class Wildberries(Marketplace):
                 supply_id=new_supply.get("id"),
             )
 
-    @staticmethod
-    def get_mapped_data(ms_ids: List[str], values: List[int]) -> List[MsItem]:
+    def _get_mapped_data(self, ms_ids: List[str], values: List[int]) -> List[MsItem]:
         resp = requests.get(
-            f"{settings.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
+            f"{self.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
         )
 
         if len(ms_ids) == 1:
