@@ -212,13 +212,17 @@ class Wildberries(Marketplace):
                 raise ValueError("Status name is not valid")
         return True
 
-    def refresh_statuses(self, orders: List[Dict[int, str]]):
+    def refresh_statuses(self, wb_order_ids: List[int], statuses: List[str]):
         new_supply = self._session.post(
             f"{settings.wb_api_url}api/v3/supplies",
             json={"name": f"supply_orders"},
         ).json()
-        for order in orders:
-            self.refresh_status(**order, supply_id=new_supply.get("id"))
+        for wb_order_id, status in zip(wb_order_ids, statuses):
+            self.refresh_status(
+                wb_order_id=wb_order_id,
+                status_name=status,
+                supply_id=new_supply.get("id"),
+            )
 
     @staticmethod
     def get_mapped_data(ms_ids: List[str], values: List[int]) -> List[MsItem]:
@@ -241,11 +245,11 @@ class Wildberries(Marketplace):
     @staticmethod
     def get_chunks(ids, values):
         chunks_ids = [
-            ids[i: i + settings.WB_ITEMS_REFRESH_LIMIT]
+            ids[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
             for i in range(0, len(ids), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         chunks_values = [
-            values[i: i + settings.WB_ITEMS_REFRESH_LIMIT]
+            values[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
             for i in range(0, len(values), settings.WB_ITEMS_REFRESH_LIMIT)
         ]
         return chunks_ids, chunks_values

@@ -23,5 +23,5 @@ class Marketplace(ABC):
         pass
 
     @abstractmethod
-    def refresh_statuses(self, orders: list[dict[int, str]]):
+    def refresh_statuses(self, ids: list[int], values: list[str]):
         pass
