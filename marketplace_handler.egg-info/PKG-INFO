@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: marketplace_handler
+Version: 1.0.0
+Summary: Module to interact with marketplaces
+Author: your_nickname
+Author-email: dulugov@gmail.com
+Requires-Dist: pydantic>=2.6.1
+Requires-Dist: requests>=2.31.0

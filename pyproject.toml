@@ -12,6 +12,10 @@ python-dotenv = "^1.0.1"
 black = "^24.1.1"
 pydantic = "^2.6.1"
 ruff = "^0.2.1"
+setuptools = "^69.1.0"
+wheel = "^0.42.0"
+twine = "^5.0.0"
+marketplace-handler = {path = "dist/marketplace_handler-1.0.0-py3-none-any.whl"}
 
 
 [build-system]

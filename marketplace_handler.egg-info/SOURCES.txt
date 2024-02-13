@@ -1,0 +1,15 @@
+pyproject.toml
+setup.cfg
+setup.py
+marketpalce_handler/__init__.py
+marketpalce_handler/config.py
+marketpalce_handler/exceptions.py
+marketpalce_handler/logger.py
+marketpalce_handler/marketplace.py
+marketpalce_handler/schemas.py
+marketpalce_handler/wb.py
+marketplace_handler.egg-info/PKG-INFO
+marketplace_handler.egg-info/SOURCES.txt
+marketplace_handler.egg-info/dependency_links.txt
+marketplace_handler.egg-info/requires.txt
+marketplace_handler.egg-info/top_level.txt
