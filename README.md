@@ -1,14 +1,3 @@
-Metadata-Version: 2.1
-Name: marketplace_handler
-Version: 1.0.1
-Summary: Module to interact with marketplaces
-Home-page: https://github.com/derijablya/marketplace-interface
-Author: derijabyla
-Author-email: dulugov@gmail.com
-Description-Content-Type: text/markdown
-Requires-Dist: pydantic>=2.6.1
-Requires-Dist: requests>=2.31.0
-
 # marketplace_handler
 
 Package to interact with marketplaces.
