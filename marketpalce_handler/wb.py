@@ -3,6 +3,8 @@ from typing import List
 from requests import HTTPError
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3 import Retry
 
 from .exceptions import InitialisationException, InvalidStatusException
 from .logger import get_logger
@@ -16,21 +18,28 @@ class Wildberries(Marketplace):
         self.bgd_mapping_url = bgd_mapping_url
         self._logger = get_logger()
         self._session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=0.5,
+        )
+        self._session.mount("https://", HTTPAdapter(max_retries=retries))
+
         try:
             bgd_token_resp = self._session.get(
                 bgd_token_url,
                 headers={
                     "Authorization": f"Token {bgd_token}",
                 },
+                timeout=5,
             )
             bgd_token_resp.raise_for_status()
-            for i in bgd_token_resp.json():
-                warehouse_id = i["warehouse_id"]
-                if warehouse_id and i["id"] == token_id:
+            for token in bgd_token_resp.json():
+                warehouse_id = token.get("warehouse_id")
+                if warehouse_id and token.get("id") == token_id:
                     self.warehouse_id = warehouse_id
                     self._session.headers.update(
                         {
-                            "Authorization": f"{i['common_token']}",
+                            "Authorization": f"{token['common_token']}",
                         }
                     )
                     self._logger.debug("Wildberries is initialized")
@@ -53,6 +62,7 @@ class Wildberries(Marketplace):
                 json={
                     "skus": [ms_items.barcodes],
                 },
+                timeout=5,
             )
             stocks.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
@@ -76,6 +86,7 @@ class Wildberries(Marketplace):
                         },
                     ]
                 },
+                timeout=5,
             )
             refresh_stock_resp.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
@@ -108,6 +119,7 @@ class Wildberries(Marketplace):
                 json={
                     "stocks": json_data,
                 },
+                timeout=5,
             )
             refresh_stocks_resp.raise_for_status()
             return True
@@ -118,7 +130,9 @@ class Wildberries(Marketplace):
             raise e
 
     def get_price(self):
-        prices = self._session.get(f"{settings.wb_api_url}public/api/v1/info")
+        prices = self._session.get(
+            f"{settings.wb_api_url}public/api/v1/info", timeout=5
+        )
         return {price["nmId"]: price["price"] for price in prices.json()}
 
     def refresh_price(self, ms_id: str, value: int):
@@ -196,6 +210,7 @@ class Wildberries(Marketplace):
             price_update_resp = self._session.post(
                 f"{settings.wb_api_url}public/api/v1/prices",
                 json=json_data,
+                timeout=5,
             )
             price_update_resp.raise_for_status()
             self._logger.info(
@@ -215,6 +230,7 @@ class Wildberries(Marketplace):
                     supply_id = supply_id or self._session.post(
                         f"{settings.wb_api_url}api/v3/supplies",
                         json={"name": f"supply_order{wb_order_id}"},
+                        timeout=5,
                     ).json().get("id")
                     add_order_to_supply_resp = requests.patch(
                         f"{settings.wb_api_url}api/v3/supplies{supply_id}/orders/{wb_order_id}",
@@ -244,6 +260,7 @@ class Wildberries(Marketplace):
             new_supply = self._session.post(
                 f"{settings.wb_api_url}api/v3/supplies",
                 json={"name": "supply_orders"},
+                timeout=5,
             ).json()
         except HTTPError as e:
             self._logger.error(f"Wildberries: can't create new supply. Error: {e}")
