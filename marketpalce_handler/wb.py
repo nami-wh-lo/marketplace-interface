@@ -4,6 +4,7 @@ from requests import HTTPError
 
 import requests
 
+from .exceptions import InitialisationException, InvalidStatusException
 from .logger import get_logger
 from .config import settings
 from .marketplace import Marketplace
@@ -15,39 +16,47 @@ class Wildberries(Marketplace):
         self.bgd_mapping_url = bgd_mapping_url
         self._logger = get_logger()
         self._session = requests.Session()
-        response = self._session.get(
-            bgd_token_url,
-            headers={
-                "Authorization": f"Token {bgd_token}",
-            },
-        )
-        for i in response.json():
-            warehouse_id = i["warehouse_id"]
-            if warehouse_id and i["id"] == token_id:
-                self.warehouse_id = warehouse_id
-                self._session.headers.update(
-                    {
-                        "Authorization": f"{i['common_token']}",
-                    }
-                )
-                self._logger.debug("Wildberries is initialized")
-                break
+        try:
+            bgd_token_resp = self._session.get(
+                bgd_token_url,
+                headers={
+                    "Authorization": f"Token {bgd_token}",
+                },
+            )
+            bgd_token_resp.raise_for_status()
+            for i in bgd_token_resp.json():
+                warehouse_id = i["warehouse_id"]
+                if warehouse_id and i["id"] == token_id:
+                    self.warehouse_id = warehouse_id
+                    self._session.headers.update(
+                        {
+                            "Authorization": f"{i['common_token']}",
+                        }
+                    )
+                    self._logger.debug("Wildberries is initialized")
+                    break
+        except HTTPError:
+            self._logger.error("Can't connect to BGD token url")
+            raise InitialisationException(
+                f"Can't connect to BGD token url {bgd_token_resp.status_code}"
+            )
+
         if not hasattr(self, "warehouse_id"):
             self._logger.error("Warehouse id is not found")
-            raise Exception("Warehouse id is not found")
+            raise InitialisationException("Warehouse id is not found")
 
     def get_stock(self, ms_id):
         try:
-            data = self._get_mapped_data([ms_id], [0])[0]
-            resp = self._session.post(
+            ms_items = self._get_mapped_data([ms_id], [0])[0]
+            stocks = self._session.post(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
-                    "skus": [data.barcodes],
+                    "skus": [ms_items.barcodes],
                 },
             )
-            resp.raise_for_status()
+            stocks.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
-            return resp.json()
+            return stocks.json()
         except HTTPError as e:
             self._logger.error(
                 f"Wildberries: {ms_id} stock is not refreshed. Error: {e}"
@@ -56,19 +65,19 @@ class Wildberries(Marketplace):
 
     def refresh_stock(self, ms_id: str, value: int):
         try:
-            data = self._get_mapped_data([ms_id], [value])[0]
-            resp = self._session.put(
+            ms_items = self._get_mapped_data([ms_id], [value])[0]
+            refresh_stock_resp = self._session.put(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
                     "stocks": [
                         {
-                            "sku": data.barcodes,
+                            "sku": ms_items.barcodes,
                             "amount": value,
                         },
                     ]
                 },
             )
-            resp.raise_for_status()
+            refresh_stock_resp.raise_for_status()
             self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
             return True
         except HTTPError as e:
@@ -94,13 +103,13 @@ class Wildberries(Marketplace):
                         "amount": item.value,
                     }
                 )
-            resp = self._session.put(
+            refresh_stocks_resp = self._session.put(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
                     "stocks": json_data,
                 },
             )
-            resp.raise_for_status()
+            refresh_stocks_resp.raise_for_status()
             return True
         except HTTPError as e:
             self._logger.error(
@@ -109,19 +118,19 @@ class Wildberries(Marketplace):
             raise e
 
     def get_price(self):
-        resp = self._session.get(f"{settings.wb_api_url}public/api/v1/info")
-        return {price["nmId"]: price["price"] for price in resp.json()}
+        prices = self._session.get(f"{settings.wb_api_url}public/api/v1/info")
+        return {price["nmId"]: price["price"] for price in prices.json()}
 
     def refresh_price(self, ms_id: str, value: int):
         try:
-            data = self._get_mapped_data([ms_id], [value])[0]
+            ms_items = self._get_mapped_data([ms_id], [value])[0]
 
-            initial_price = self.get_price().get(data.nm_id)
+            initial_price = self.get_price().get(ms_items.nm_id)
 
             self._update_prices(
                 [
                     WbUpdateItem(
-                        **data.dict(),
+                        **ms_items.dict(),
                         current_value=initial_price,
                     )
                 ]
@@ -183,41 +192,62 @@ class Wildberries(Marketplace):
                         "price": item.value,
                     },
                 )
-        resp = self._session.post(
-            f"{settings.wb_api_url}public/api/v1/prices",
-            json=json_data,
-        )
-        resp.raise_for_status()
-        self._logger.info(f"response: {resp.status_code} {resp.json()}")
+        try:
+            price_update_resp = self._session.post(
+                f"{settings.wb_api_url}public/api/v1/prices",
+                json=json_data,
+            )
+            price_update_resp.raise_for_status()
+            self._logger.info(
+                f"response: {price_update_resp.status_code} {price_update_resp.json()}"
+            )
+        except HTTPError as e:
+            self._logger.error(f"Wildberries: prices are not refreshed. Error: {e}")
+            raise e
         if items_to_reprice:
             self._update_prices(items_to_reprice)
-        return resp.json()
+        return True
 
     def refresh_status(self, wb_order_id: int, status_name: str, supply_id: int = None):
-        match status_name:
-            case "confirm":
-                supply_id = supply_id or self._session.post(
-                    f"{settings.wb_api_url}api/v3/supplies",
-                    json={"name": f"supply_order{wb_order_id}"},
-                ).json().get("id")
-                add_order_to_supply_resp = requests.patch(
-                    f"{settings.wb_api_url}api/v3/supplies{supply_id}/orders/{wb_order_id}",
-                )
-                add_order_to_supply_resp.raise_for_status()
-            case "cancel":
-                cancel_order_resp = requests.patch(
-                    f"{settings.wb_api_url}api/v3/supplies/{wb_order_id}/cancel"
-                )
-                cancel_order_resp.raise_for_status()
-            case _:
-                raise ValueError("Status name is not valid")
+        try:
+            match status_name:
+                case "confirm":
+                    supply_id = supply_id or self._session.post(
+                        f"{settings.wb_api_url}api/v3/supplies",
+                        json={"name": f"supply_order{wb_order_id}"},
+                    ).json().get("id")
+                    add_order_to_supply_resp = requests.patch(
+                        f"{settings.wb_api_url}api/v3/supplies{supply_id}/orders/{wb_order_id}",
+                    )
+                    add_order_to_supply_resp.raise_for_status()
+                case "cancel":
+                    cancel_order_resp = requests.patch(
+                        f"{settings.wb_api_url}api/v3/supplies/{wb_order_id}/cancel"
+                    )
+                    cancel_order_resp.raise_for_status()
+                case _:
+                    raise InvalidStatusException(
+                        f"{status_name} is not valid status name"
+                    )
+        except HTTPError as e:
+            self._logger.error(
+                f"Wildberries: {wb_order_id} status is not refreshed. Error: {e}"
+            )
+            raise e
         return True
 
     def refresh_statuses(self, wb_order_ids: List[int], statuses: List[str]):
-        new_supply = self._session.post(
-            f"{settings.wb_api_url}api/v3/supplies",
-            json={"name": f"supply_orders"},
-        ).json()
+        if len(wb_order_ids) != len(statuses):
+            raise ValueError("ids and statuses should have the same length")
+
+        try:
+            new_supply = self._session.post(
+                f"{settings.wb_api_url}api/v3/supplies",
+                json={"name": "supply_orders"},
+            ).json()
+        except HTTPError as e:
+            self._logger.error(f"Wildberries: can't create new supply. Error: {e}")
+            raise e
         for wb_order_id, status in zip(wb_order_ids, statuses):
             self.refresh_status(
                 wb_order_id=wb_order_id,
@@ -226,17 +256,17 @@ class Wildberries(Marketplace):
             )
 
     def _get_mapped_data(self, ms_ids: List[str], values: List[int]) -> List[MsItem]:
-        resp = requests.get(
+        ms_items = requests.get(
             f"{self.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
         )
 
         if len(ms_ids) == 1:
-            return [MsItem(**resp.json()[0], value=values[0])]
+            return [MsItem(**ms_items.json()[0], value=values[0])]
 
         id_value_map = dict(zip(ms_ids, values))
 
         mapped_data = []
-        for item in resp.json():
+        for item in ms_items.json():
             value = id_value_map.get(item["ms_id"])
             item["value"] = value
             mapped_data.append(MsItem(**item))
