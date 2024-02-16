@@ -7,7 +7,7 @@ load_dotenv()
 
 serv = Wildberries(
     token_id=3,
-    token_service_token=,
-    token_service_url=,
-    mapping_url=,
+    token_service_token="token",
+    token_service_url="url",
+    mapping_url="url",
 )
