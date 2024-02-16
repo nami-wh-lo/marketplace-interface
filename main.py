@@ -7,8 +7,7 @@ load_dotenv()
 
 serv = Wildberries(
     token_id=3,
-    token=os.getenv("BGD_TOKEN"),
-    token_service_url=os.getenv("BGD_TOKEN_URL"),
-    mapping_url=os.getenv("BGD_MAPPING_URL"),
+    token_service_token=,
+    token_service_url=,
+    mapping_url=,
 )
-

@@ -19,9 +19,10 @@ class Mapping:
             return [MsItem(**ms_items.json()[0], value=values[0])]
         id_value_map = dict(zip(ms_ids, values))
         mapped_data = []
-        
+
         for item in ms_items.json():
             value = id_value_map.get(item["ms_id"])
             item["value"] = value
             mapped_data.append(MsItem(**item))
+
         return mapped_data

@@ -12,15 +12,18 @@ from .config import settings
 from .mapping import Mapping
 from .marketplace import Marketplace
 from .schemas import WbUpdateItem
-from .validators import validate_ids_and_values, validate_id_and_value
+from .validators import (
+    validate_ids_and_values,
+    validate_id_and_value,
+    validate_statuses,
+)
 
 
 class Wildberries(Marketplace):
-    def __init__(self, token_id, token, token_service_url, mapping_url):
-        self.mapping_url = mapping_url
+    def __init__(self, token_id, token_service_token, token_service_url, mapping_url):
         self._logger = get_logger()
         self._session = requests.Session()
-        self._mapping_service = Mapping(self.mapping_url, self._session)
+        self._mapping_service = Mapping(mapping_url, self._session)
         retries = Retry(
             total=3,
             backoff_factor=0.5,
@@ -28,15 +31,15 @@ class Wildberries(Marketplace):
         self._session.mount("https://", HTTPAdapter(max_retries=retries))
 
         try:
-            bgd_token_resp = self._session.get(
+            tokens = self._session.get(
                 token_service_url,
                 headers={
-                    "Authorization": f"Token {token}",
+                    "Authorization": f"Token {token_service_token}",
                 },
                 timeout=5,
             )
-            bgd_token_resp.raise_for_status()
-            for token in bgd_token_resp.json():
+            tokens.raise_for_status()
+            for token in tokens.json():
                 warehouse_id = token.get("warehouse_id")
                 if warehouse_id and token.get("id") == token_id:
                     self.warehouse_id = warehouse_id
@@ -48,9 +51,9 @@ class Wildberries(Marketplace):
                     self._logger.debug("Wildberries is initialized")
                     break
         except HTTPError:
-            self._logger.error("Can't connect to BGD token url")
+            self._logger.error("Can't connect to token service")
             raise InitialisationException(
-                f"Can't connect to BGD token url {bgd_token_resp.status_code}"
+                f"Can't connect to token service {tokens.status_code}"
             )
 
         if not hasattr(self, "warehouse_id"):
@@ -225,7 +228,9 @@ class Wildberries(Marketplace):
             self._update_prices(items_to_reprice)
         return True
 
-    def refresh_status(self, wb_order_id: int, status_name: str, supply_id: int = None):
+    def refresh_status(self, wb_order_id: int, status_name: str, supply_id: str = None):
+        assert isinstance(wb_order_id, int)
+        assert isinstance(status_name, str)
         try:
             match status_name:
                 case "confirm":
@@ -235,44 +240,44 @@ class Wildberries(Marketplace):
                         timeout=5,
                     ).json().get("id")
                     add_order_to_supply_resp = requests.patch(
-                        f"{settings.wb_api_url}api/v3/supplies{supply_id}/orders/{wb_order_id}",
+                        f"{settings.wb_api_url}api/v3/supplies/{supply_id}/orders/{wb_order_id}",
                     )
                     add_order_to_supply_resp.raise_for_status()
                 case "cancel":
                     cancel_order_resp = requests.patch(
-                        f"{settings.wb_api_url}api/v3/supplies/{wb_order_id}/cancel"
+                        f"{settings.wb_api_url}api/v3/orders/{wb_order_id}/cancel"
                     )
                     cancel_order_resp.raise_for_status()
                 case _:
                     raise InvalidStatusException(
                         f"{status_name} is not valid status name"
                     )
+            return True
         except HTTPError as e:
             self._logger.error(
                 f"Wildberries: {wb_order_id} status is not refreshed. Error: {e}"
             )
             raise e
-        return True
 
+    @validate_statuses
     def refresh_statuses(self, wb_order_ids: List[int], statuses: List[str]):
-        if len(wb_order_ids) != len(statuses):
-            raise ValueError("ids and statuses should have the same length")
-
         try:
             new_supply = self._session.post(
                 f"{settings.wb_api_url}api/v3/supplies",
                 json={"name": "supply_orders"},
                 timeout=5,
             ).json()
+
+            for wb_order_id, status in zip(wb_order_ids, statuses):
+                self.refresh_status(
+                    wb_order_id=wb_order_id,
+                    status_name=status,
+                    supply_id=new_supply.get("id"),
+                )
+            return True
         except HTTPError as e:
             self._logger.error(f"Wildberries: can't create new supply. Error: {e}")
             raise e
-        for wb_order_id, status in zip(wb_order_ids, statuses):
-            self.refresh_status(
-                wb_order_id=wb_order_id,
-                status_name=status,
-                supply_id=new_supply.get("id"),
-            )
 
     @staticmethod
     def get_chunks(ids, values):
