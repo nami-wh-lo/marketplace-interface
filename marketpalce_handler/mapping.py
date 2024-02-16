@@ -3,6 +3,7 @@ from typing import List
 from requests import Session
 
 from marketpalce_handler.schemas import MsItem
+from marketpalce_handler.validators import validate_ids_and_values
 
 
 class Mapping:
@@ -11,6 +12,7 @@ class Mapping:
         self.session = session
         self.mapping_url = mapping_url
 
+    @validate_ids_and_values
     def get_mapped_data(self, ms_ids: List[str], values: List[int]) -> List[MsItem]:
         ms_items = self.session.get(
             f"{self.mapping_url}", params={"ms_id": ",".join(ms_ids)}
