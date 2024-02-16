@@ -21,9 +21,9 @@ from marketpalce_handler import Wildberries
 
 marketplace = Wildberries(
     token_id=0,
-    bgd_token="your_token",
-    bgd_token_url="https://your_token_url",
-    bgd_mapping_url="https://your_mapping_url",
+    token="your_token",
+    token_service_url="https://your_token_url",
+    mapping_url="https://your_mapping_url",
 )
 
 marketplace.refresh_price("id", 0)

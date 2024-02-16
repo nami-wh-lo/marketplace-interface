@@ -9,15 +9,18 @@ from urllib3 import Retry
 from .exceptions import InitialisationException, InvalidStatusException
 from .logger import get_logger
 from .config import settings
+from .mapping import Mapping
 from .marketplace import Marketplace
-from .schemas import MsItem, WbUpdateItem
+from .schemas import WbUpdateItem
+from .validators import validate_ids_and_values, validate_id_and_value
 
 
 class Wildberries(Marketplace):
-    def __init__(self, token_id, bgd_token, bgd_token_url, bgd_mapping_url):
-        self.bgd_mapping_url = bgd_mapping_url
+    def __init__(self, token_id, token, token_service_url, mapping_url):
+        self.mapping_url = mapping_url
         self._logger = get_logger()
         self._session = requests.Session()
+        self._mapping_service = Mapping(self.mapping_url, self._session)
         retries = Retry(
             total=3,
             backoff_factor=0.5,
@@ -26,9 +29,9 @@ class Wildberries(Marketplace):
 
         try:
             bgd_token_resp = self._session.get(
-                bgd_token_url,
+                token_service_url,
                 headers={
-                    "Authorization": f"Token {bgd_token}",
+                    "Authorization": f"Token {token}",
                 },
                 timeout=5,
             )
@@ -54,9 +57,10 @@ class Wildberries(Marketplace):
             self._logger.error("Warehouse id is not found")
             raise InitialisationException("Warehouse id is not found")
 
-    def get_stock(self, ms_id):
+    def get_stock(self, ms_id: str):
         try:
-            ms_items = self._get_mapped_data([ms_id], [0])[0]
+            assert isinstance(ms_id, str)
+            ms_items = self._mapping_service.get_mapped_data([ms_id], [0])[0]
             stocks = self._session.post(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
@@ -65,7 +69,6 @@ class Wildberries(Marketplace):
                 timeout=5,
             )
             stocks.raise_for_status()
-            self._logger.info(f"Wildberries: {ms_id} stock is refreshed")
             return stocks.json()
         except HTTPError as e:
             self._logger.error(
@@ -73,9 +76,10 @@ class Wildberries(Marketplace):
             )
             raise e
 
+    @validate_id_and_value
     def refresh_stock(self, ms_id: str, value: int):
         try:
-            ms_items = self._get_mapped_data([ms_id], [value])[0]
+            ms_items = self._mapping_service.get_mapped_data([ms_id], [value])[0]
             refresh_stock_resp = self._session.put(
                 f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
                 json={
@@ -97,17 +101,16 @@ class Wildberries(Marketplace):
             )
             raise e
 
+    @validate_ids_and_values
     def refresh_stocks(self, ms_ids: List[str], values: List[int]):
         try:
             json_data = []
-            if len(ms_ids) != len(values):
-                raise ValueError("ids and values should have the same length")
             if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
                 chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                     self.refresh_stocks(chunk_ids, chunk_values)
 
-            for item in self._get_mapped_data(ms_ids, values):
+            for item in self._mapping_service.get_mapped_data(ms_ids, values):
                 json_data.append(
                     {
                         "sku": item.barcodes,
@@ -135,9 +138,10 @@ class Wildberries(Marketplace):
         )
         return {price["nmId"]: price["price"] for price in prices.json()}
 
+    @validate_id_and_value
     def refresh_price(self, ms_id: str, value: int):
         try:
-            ms_items = self._get_mapped_data([ms_id], [value])[0]
+            ms_items = self._mapping_service.get_mapped_data([ms_id], [value])[0]
 
             initial_price = self.get_price().get(ms_items.nm_id)
 
@@ -156,10 +160,8 @@ class Wildberries(Marketplace):
             )
             raise e
 
+    @validate_ids_and_values
     def refresh_prices(self, ms_ids: List[str], values: List[int]):
-        if len(ms_ids) != len(values):
-            raise ValueError("ids and values should have the same length")
-
         if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
             chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
             for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
@@ -167,7 +169,7 @@ class Wildberries(Marketplace):
 
         initial_prices = self.get_price()
         items_to_reprice = []
-        for item in self._get_mapped_data(ms_ids, values):
+        for item in self._mapping_service.get_mapped_data(ms_ids, values):
             items_to_reprice.append(
                 WbUpdateItem(
                     **item.dict(),
@@ -271,23 +273,6 @@ class Wildberries(Marketplace):
                 status_name=status,
                 supply_id=new_supply.get("id"),
             )
-
-    def _get_mapped_data(self, ms_ids: List[str], values: List[int]) -> List[MsItem]:
-        ms_items = requests.get(
-            f"{self.bgd_mapping_url}", params={"ms_id": ",".join(ms_ids)}
-        )
-
-        if len(ms_ids) == 1:
-            return [MsItem(**ms_items.json()[0], value=values[0])]
-
-        id_value_map = dict(zip(ms_ids, values))
-
-        mapped_data = []
-        for item in ms_items.json():
-            value = id_value_map.get(item["ms_id"])
-            item["value"] = value
-            mapped_data.append(MsItem(**item))
-        return mapped_data
 
     @staticmethod
     def get_chunks(ids, values):
