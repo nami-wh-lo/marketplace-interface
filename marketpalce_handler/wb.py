@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 from requests import HTTPError
 
@@ -20,10 +20,18 @@ from .validators import (
 
 
 class Wildberries(Marketplace):
-    def __init__(self, token_id, token_service_token, token_service_url, mapping_url):
+    def __init__(
+        self,
+        token_id,
+        token_service_token,
+        token_service_url,
+        mapping_url,
+        max_price_requests: int = 5,
+    ):
         self._logger = get_logger()
         self._session = requests.Session()
         self._mapping_service = Mapping(mapping_url, self._session)
+        self._max_price_requests = max_price_requests
         retries = Retry(
             total=3,
             backoff_factor=0.5,
@@ -135,18 +143,44 @@ class Wildberries(Marketplace):
             )
             raise e
 
-    def get_price(self):
-        prices = self._session.get(
-            f"{settings.wb_api_url}public/api/v1/info", timeout=5
-        )
-        return {price["nmId"]: price["price"] for price in prices.json()}
+    def get_price(self) -> Dict:
+        products = dict()
+        for i in range(0, self._max_price_requests + 1):
+            try:
+                prices = self._session.get(
+                    f"{settings.wb_price_url}api/v2/list/goods/filter",
+                    timeout=5,
+                    params={
+                        "limit": settings.WB_ITEMS_REFRESH_LIMIT,
+                        "offset": i * settings.WB_ITEMS_REFRESH_LIMIT,
+                    },
+                )
+                if prices:
+                    products.update(
+                        {
+                            product["nmID"]: {
+                                "price": product["sizes"][0]["price"],
+                                "discount": product["discount"],
+                            }
+                            for product in prices.json()["data"]["listGoods"]
+                        }
+                    )
+                if (
+                    len(prices.json()["data"]["listGoods"])
+                    < settings.WB_ITEMS_REFRESH_LIMIT
+                ):
+                    break
+            except HTTPError as e:
+                self._logger.error(f"Wildberries: prices are not refreshed. Error: {e}")
+                raise e
+        return products
 
     @validate_id_and_value
     def refresh_price(self, ms_id: str, value: int):
         try:
             ms_items = self._mapping_service.get_mapped_data([ms_id], [value])[0]
 
-            initial_price = self.get_price().get(ms_items.nm_id)
+            initial_price = self.get_price().get(ms_items.nm_id)["price"]
 
             self._update_prices(
                 [
@@ -154,7 +188,8 @@ class Wildberries(Marketplace):
                         **ms_items.dict(),
                         current_value=initial_price,
                     )
-                ]
+                ],
+                "price",
             )
             return True
         except HTTPError as e:
@@ -176,14 +211,57 @@ class Wildberries(Marketplace):
             items_to_reprice.append(
                 WbUpdateItem(
                     **item.dict(),
-                    current_value=initial_prices.get(item.nm_id),
+                    current_value=initial_prices.get(item.nm_id)["price"],
                 )
             )
 
-        self._update_prices(items_to_reprice)
+        self._update_prices(items_to_reprice, "price")
         return True
 
-    def _update_prices(self, items: List[WbUpdateItem]):
+    @validate_id_and_value
+    def refresh_discount(self, ms_id: str, value: int):
+        try:
+            ms_items = self._mapping_service.get_mapped_data([ms_id], [value])[0]
+
+            initial_price = self.get_price().get(ms_items.nm_id)["discount"]
+
+            self._update_prices(
+                [
+                    WbUpdateItem(
+                        **ms_items.dict(),
+                        current_value=initial_price,
+                    )
+                ],
+                "discount",
+            )
+            return True
+        except HTTPError as e:
+            self._logger.error(
+                f"Wildberries: {ms_id} price is not refreshed. Error: {e}"
+            )
+            raise e
+
+    @validate_ids_and_values
+    def refresh_discounts(self, ms_ids: List[str], values: List[int]):
+        if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
+            chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
+            for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
+                self.refresh_price(chunk_ids, chunk_values)
+
+        initial_prices = self.get_price()
+        items_to_reprice = []
+        for item in self._mapping_service.get_mapped_data(ms_ids, values):
+            items_to_reprice.append(
+                WbUpdateItem(
+                    **item.dict(),
+                    current_value=initial_prices.get(item.nm_id)["discount"],
+                )
+            )
+
+        self._update_prices(items_to_reprice, "discount")
+        return True
+
+    def _update_prices(self, items: List[WbUpdateItem], update_value):
         items_to_reprice: List[WbUpdateItem] = []
         json_data = []
         for item in items:
@@ -191,7 +269,7 @@ class Wildberries(Marketplace):
                 json_data.append(
                     {
                         "nmId": item.nm_id,
-                        "price": item.current_value * 2,
+                        update_value: item.current_value * 2,
                     },
                 )
                 items_to_reprice.append(
@@ -208,13 +286,13 @@ class Wildberries(Marketplace):
                 json_data.append(
                     {
                         "nmId": item.nm_id,
-                        "price": item.value,
+                        update_value: item.value,
                     },
                 )
         try:
             price_update_resp = self._session.post(
-                f"{settings.wb_api_url}public/api/v1/prices",
-                json=json_data,
+                f"{settings.wb_price_url}api/v2/upload/task",
+                json={"data": json_data},
                 timeout=5,
             )
             price_update_resp.raise_for_status()
@@ -225,7 +303,7 @@ class Wildberries(Marketplace):
             self._logger.error(f"Wildberries: prices are not refreshed. Error: {e}")
             raise e
         if items_to_reprice:
-            self._update_prices(items_to_reprice)
+            self._update_prices(items_to_reprice, "price")
         return True
 
     def refresh_status(self, wb_order_id: int, status_name: str, supply_id: str = None):

@@ -37,16 +37,52 @@ def mapping(mock_api):
 @pytest.fixture
 def prices(mock_api):
     mock_api.get(
-        f"{settings.wb_api_url}public/api/v1/info",
-        json=[
-            {"nmId": 1231312, "price": 10, "discount": 10, "promoCode": 5},
-            {"nmId": 1323312, "price": 20, "discount": 10, "promoCode": 5},
-        ],
+        f"{settings.wb_price_url}api/v2/list/goods/filter",
+        json={
+            "data": {
+                "listGoods": [
+                    {
+                        "nmID": 1231312,
+                        "vendorCode": "07326060",
+                        "sizes": [
+                            {
+                                "sizeID": 3123515574,
+                                "price": 10,
+                                "discountedPrice": 9,
+                                "techSizeName": 42,
+                            }
+                        ],
+                        "currencyIsoCode4217": "RUB",
+                        "discount": 10,
+                        "editableSizePrice": True,
+                    },
+                    {
+                        "nmID": 1323312,
+                        "vendorCode": "0767656",
+                        "sizes": [
+                            {
+                                "sizeID": 3123515574,
+                                "price": 20,
+                                "discountedPrice": 18,
+                                "techSizeName": 42,
+                            }
+                        ],
+                        "currencyIsoCode4217": "RUB",
+                        "discount": 10,
+                        "editableSizePrice": True,
+                    },
+                ]
+            }
+        },
     )
     mock_api.post(
-        f"{settings.wb_api_url}public/api/v1/prices",
+        f"{settings.wb_price_url}api/v2/upload/task",
         status_code=200,
-        json={"uploadId": 612455},
+        json={
+            "data": {"id": 612455, "alreadyExists": False},
+            "error": False,
+            "errorText": "",
+        },
     )
 
 

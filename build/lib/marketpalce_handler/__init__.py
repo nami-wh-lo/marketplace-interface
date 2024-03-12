@@ -1,1 +1,0 @@
-from .wb import Wildberries
