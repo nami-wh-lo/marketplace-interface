@@ -27,9 +27,10 @@ class Wildberries(Marketplace):
         token_service_url,
         mapping_url,
         max_price_requests: int = 5,
+        session: requests.Session = requests.Session(),
     ):
         self._logger = get_logger()
-        self._session = requests.Session()
+        self._session = session
         self._mapping_service = Mapping(mapping_url, self._session)
         self._max_price_requests = max_price_requests
         retries = Retry(
