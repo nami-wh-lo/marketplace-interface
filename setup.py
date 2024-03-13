@@ -8,7 +8,7 @@ def readme():
 
 setup(
     name="marketplace_handler",
-    version="1.1.1",
+    version="1.2.1",
     author="derijabyla",
     author_email="dulugov@gmail.com",
     description="Module to interact with marketplaces",
