@@ -266,7 +266,7 @@ class Wildberries(Marketplace):
         items_to_reprice: List[WbUpdateItem] = []
         json_data = []
         for item in items:
-            if item.current_value * 2 < item.value:
+            if item.current_value * 2 < item.value and update_value == "price":
                 json_data.append(
                     {
                         "nmId": item.nm_id,
