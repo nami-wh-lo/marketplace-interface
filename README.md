@@ -15,7 +15,7 @@ poetry add marketplace_handler
 ```
 
 ## Usage
-
+### Wildberries
 ```python
 from marketpalce_handler import Wildberries
 
@@ -28,3 +28,13 @@ marketplace = Wildberries(
 
 marketplace.refresh_price("id", 0)
 ```        
+### Ozon
+```python
+from marketpalce_handler import Ozon
+ozon = Ozon(
+    client_id="client_id",
+    api_key="api_key",
+    collector_api_key="collector_api_key",
+    collector_url="https://collector_url",
+)
+```

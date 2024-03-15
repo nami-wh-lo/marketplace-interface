@@ -1,9 +1,9 @@
 import re
-
 import pytest
 import requests_mock
+from aioresponses import aioresponses
 
-from marketpalce_handler import Wildberries
+from marketpalce_handler import Wildberries, Ozon
 from marketpalce_handler.config import settings
 
 
@@ -35,7 +35,7 @@ def mapping(mock_api):
 
 
 @pytest.fixture
-def prices(mock_api):
+def wb_prices(mock_api):
     mock_api.get(
         f"{settings.wb_price_url}api/v2/list/goods/filter",
         json={
@@ -87,7 +87,7 @@ def prices(mock_api):
 
 
 @pytest.fixture
-def statuses(mock_api):
+def wb_statuses(mock_api):
     mock_api.post(f"{settings.wb_api_url}api/v3/supplies", json={"id": "WB-GI-1234567"})
     cancel_order_url_matcher = re.compile(
         f"{settings.wb_api_url}api/v3/orders/\d+/cancel"
@@ -117,4 +117,91 @@ def wildberries(mock_api, mapping):
         token_service_token="token",
         token_service_url="https://token_service_url",
         mapping_url="https://mapping_url",
+    )
+
+
+@pytest.fixture
+def collector():
+    with aioresponses() as mocked_session:
+        mocked_session.get(
+            f"https://collector_url/v1/products/additional/cmd?ms_id=1",
+            payload={
+                "ms_id": "1",
+                "ozon_product_id": "125",
+                "code": "123",
+                "ozon_max_price": 1000,
+                "attributes": {
+                    "79c718d6-8526-11ee-0a80-065e00096935": {"value": "123"}
+                },
+            },
+        )
+        mocked_session.get(
+            f"https://collector_url/v1/products/additional/cmd?ms_id=2",
+            payload={
+                "ms_id": "2",
+                "ozon_product_id": "126",
+                "code": "124",
+                "ozon_max_price": 2000,
+                "attributes": {
+                    "79c718d6-8526-11ee-0a80-065e00096935": {"value": "124"}
+                },
+            },
+        )
+        yield
+
+
+@pytest.fixture
+def ozon_prices(mock_api):
+    mock_api.post(
+        f"{settings.ozon_api_url}v1/product/import/prices",
+        json={
+            "result": [
+                {"product_id": 1, "offer_id": "1", "updated": True, "errors": []},
+                {"product_id": 2, "offer_id": "2", "updated": True, "errors": []},
+            ]
+        },
+    )
+
+
+@pytest.fixture
+def ozon_stocks(mock_api):
+    mock_api.post(
+        f"{settings.ozon_api_url}v1/product/import/stocks",
+        json={
+            "result": [
+                {"product_id": 1, "offer_id": "1", "updated": True, "errors": []},
+                {"product_id": 2, "offer_id": "2", "updated": True, "errors": []},
+            ]
+        },
+    )
+    mock_api.post(
+        f"{settings.ozon_api_url}v2/products/stocks",
+        json={
+            "result": [
+                {
+                    "product_id": 1,
+                    "offer_id": "1",
+                    "warehouse_id": 1,
+                    "updated": True,
+                    "errors": [],
+                },
+                {
+                    "product_id": 2,
+                    "offer_id": "2",
+                    "warehouse_id": 2,
+                    "updated": True,
+                    "errors": [],
+                },
+            ]
+        },
+    )
+
+
+@pytest.fixture
+def ozon(collector):
+    return Ozon(
+        client_id="112751",
+        api_key="key",
+        collector_api_key="collector_api_key",
+        collector_url="https://collector_url",
     )

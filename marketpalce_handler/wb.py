@@ -12,6 +12,7 @@ from .config import settings
 from .mapping import Mapping
 from .marketplace import Marketplace
 from .schemas import WbUpdateItem
+from .utils import get_chunks
 from .validators import (
     validate_ids_and_values,
     validate_id_and_value,
@@ -118,7 +119,7 @@ class Wildberries(Marketplace):
         try:
             json_data = []
             if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
-                chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
+                chunks_ids, chunks_values = get_chunks(ms_ids, values)
                 for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                     self.refresh_stocks(chunk_ids, chunk_values)
 
@@ -202,7 +203,7 @@ class Wildberries(Marketplace):
     @validate_ids_and_values
     def refresh_prices(self, ms_ids: List[str], values: List[int]):
         if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
-            chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
+            chunks_ids, chunks_values = get_chunks(ms_ids, values)
             for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                 self.refresh_price(chunk_ids, chunk_values)
 
@@ -245,7 +246,7 @@ class Wildberries(Marketplace):
     @validate_ids_and_values
     def refresh_discounts(self, ms_ids: List[str], values: List[int]):
         if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
-            chunks_ids, chunks_values = self.get_chunks(ms_ids, values)
+            chunks_ids, chunks_values = get_chunks(ms_ids, values)
             for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
                 self.refresh_price(chunk_ids, chunk_values)
 
@@ -357,15 +358,3 @@ class Wildberries(Marketplace):
         except HTTPError as e:
             self._logger.error(f"Wildberries: can't create new supply. Error: {e}")
             raise e
-
-    @staticmethod
-    def get_chunks(ids, values):
-        chunks_ids = [
-            ids[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
-            for i in range(0, len(ids), settings.WB_ITEMS_REFRESH_LIMIT)
-        ]
-        chunks_values = [
-            values[i : i + settings.WB_ITEMS_REFRESH_LIMIT]
-            for i in range(0, len(values), settings.WB_ITEMS_REFRESH_LIMIT)
-        ]
-        return chunks_ids, chunks_values

@@ -80,7 +80,7 @@ class TestWildberries:
         with pytest.raises(HTTPError):
             wildberries.refresh_stocks(["1", "2"], [1, 2])
 
-    def test_refresh_price(self, mock_api, wildberries, prices):
+    def test_refresh_price(self, mock_api, wildberries, wb_prices):
         assert wildberries.refresh_price("1", 0)
 
     @pytest.mark.parametrize(
@@ -91,12 +91,12 @@ class TestWildberries:
         ],
     )
     def test_refresh_price_with_invalid_parameters(
-        self, mock_api, wildberries, prices, ms_id, value
+        self, mock_api, wildberries, wb_prices, ms_id, value
     ):
         with pytest.raises(AssertionError):
             wildberries.refresh_price(ms_id, value)
 
-    def test_refresh_prices(self, mock_api, wildberries, prices):
+    def test_refresh_prices(self, mock_api, wildberries, wb_prices):
         assert wildberries.refresh_prices(["1", "2"], [0, 1])
 
     @pytest.mark.parametrize(
@@ -107,39 +107,39 @@ class TestWildberries:
         ],
     )
     def test_refresh_prices_with_invalid_parameters(
-        self, mock_api, wildberries, prices, ms_ids, values
+        self, mock_api, wildberries, wb_prices, ms_ids, values
     ):
         with pytest.raises(ValidationError):
             wildberries.refresh_prices(ms_ids, values)
 
-    def test_refresh_prices_with_invalid_length(self, mock_api, wildberries, prices):
+    def test_refresh_prices_with_invalid_length(self, mock_api, wildberries, wb_prices):
         with pytest.raises(AssertionError):
             wildberries.refresh_prices(["1", "2"], [1, 2, 3])
 
     @pytest.mark.parametrize("status", ["confirm", "cancel"])
-    def test_refresh_status(self, wildberries, statuses, status):
+    def test_refresh_status(self, wildberries, wb_statuses, status):
         assert wildberries.refresh_status(1234567, status)
 
-    def test_refresh_invalid_status(self, wildberries, statuses):
+    def test_refresh_invalid_status(self, wildberries, wb_statuses):
         with pytest.raises(InvalidStatusException):
             wildberries.refresh_status(1234567, "killmeplease")
 
-    def test_refresh_statuses(self, wildberries, statuses):
+    def test_refresh_statuses(self, wildberries, wb_statuses):
         assert wildberries.refresh_statuses([1234567, 1234568], ["confirm", "cancel"])
 
-    def test_refresh_statuses_with_invalid_length(self, wildberries, statuses):
+    def test_refresh_statuses_with_invalid_length(self, wildberries, wb_statuses):
         with pytest.raises(AssertionError):
             wildberries.refresh_statuses(
                 [1234567, 1234568], ["confirm", "cancel", "confirm"]
             )
 
-    def test_refresh_statuses_with_invalid_status(self, wildberries, statuses):
+    def test_refresh_statuses_with_invalid_status(self, wildberries, wb_statuses):
         with pytest.raises(InvalidStatusException):
             wildberries.refresh_statuses(
                 [1234567, 1234568], ["confirm", "killmeplease"]
             )
 
-    def test_refresh_discount(self, mock_api, wildberries, prices):
+    def test_refresh_discount(self, mock_api, wildberries, wb_prices):
         assert wildberries.refresh_price("1", 0)
 
     @pytest.mark.parametrize(
@@ -150,12 +150,12 @@ class TestWildberries:
         ],
     )
     def test_refresh_discount_with_invalid_parameters(
-        self, mock_api, wildberries, prices, ms_id, value
+        self, mock_api, wildberries, wb_prices, ms_id, value
     ):
         with pytest.raises(AssertionError):
             wildberries.refresh_discount(ms_id, value)
 
-    def test_refresh_discounts(self, mock_api, wildberries, prices):
+    def test_refresh_discounts(self, mock_api, wildberries, wb_prices):
         assert wildberries.refresh_discounts(["1", "2"], [0, 1])
 
     @pytest.mark.parametrize(
@@ -166,11 +166,13 @@ class TestWildberries:
         ],
     )
     def test_refresh_discounts_with_invalid_parameters(
-        self, mock_api, wildberries, prices, ms_ids, values
+        self, mock_api, wildberries, wb_prices, ms_ids, values
     ):
         with pytest.raises(ValidationError):
             wildberries.refresh_discounts(ms_ids, values)
 
-    def test_refresh_discounts_with_invalid_length(self, mock_api, wildberries, prices):
+    def test_refresh_discounts_with_invalid_length(
+        self, mock_api, wildberries, wb_prices
+    ):
         with pytest.raises(AssertionError):
             wildberries.refresh_discounts(["1", "2"], [1, 2, 3])

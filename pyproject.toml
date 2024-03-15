@@ -18,6 +18,8 @@ twine = "^5.0.0"
 pytest = "^8.0.0"
 pytest-mock = "^3.12.0"
 requests-mock = "^1.11.0"
+aiohttp = "^3.9.3"
+aioresponses = "^0.7.6"
 
 
 [build-system]

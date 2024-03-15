@@ -23,8 +23,8 @@ class Mapping:
 
         mapped_data = []
         for i in range(0, len(ms_ids), settings.MAPPING_LIMIT):
-            ms_ids_chunk = ms_ids[i:i + settings.MAPPING_LIMIT]
-            values_chunk = values[i:i + settings.MAPPING_LIMIT]
+            ms_ids_chunk = ms_ids[i : i + settings.MAPPING_LIMIT]
+            values_chunk = values[i : i + settings.MAPPING_LIMIT]
             ms_items = self.session.get(
                 f"{self.mapping_url}", params={"ms_id": ",".join(ms_ids_chunk)}
             )
