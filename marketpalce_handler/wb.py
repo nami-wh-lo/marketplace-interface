@@ -22,13 +22,13 @@ from .validators import (
 
 class Wildberries(Marketplace):
     def __init__(
-        self,
-        token_id,
-        token_service_token,
-        token_service_url,
-        mapping_url,
-        max_price_requests: int = 5,
-        session: requests.Session = requests.Session(),
+            self,
+            token_id,
+            token_service_token,
+            token_service_url,
+            mapping_url,
+            max_price_requests: int = 5,
+            session: requests.Session = requests.Session(),
     ):
         self._logger = get_logger()
         self._session = session
@@ -86,6 +86,31 @@ class Wildberries(Marketplace):
         except HTTPError as e:
             self._logger.error(
                 f"Wildberries: {ms_id} stock is not refreshed. Error: {e}"
+            )
+            raise e
+
+    def get_stocks(self, ms_ids: List[str]):
+        try:
+            json_data = []
+            if len(ms_ids) > settings.WB_ITEMS_REFRESH_LIMIT:
+                chunks_ids, chunks_values = get_chunks(ms_ids, [0] * len(ms_ids))
+                for chunk_ids, chunk_values in zip(chunks_ids, chunks_values):
+                    json_data.extend(
+                        self.get_stocks(chunk_ids)
+                    )
+            else:
+                for item in self._mapping_service.get_mapped_data(ms_ids, [0] * len(ms_ids)):
+                    json_data.append(item.barcodes)
+            stocks = self._session.post(
+                f"{settings.wb_api_url}api/v3/stocks/{self.warehouse_id}",
+                json={"skus": json_data},
+                timeout=5,
+            )
+            stocks.raise_for_status()
+            return stocks.json()
+        except HTTPError as e:
+            self._logger.error(
+                f"Wildberries: couldn't get stocks. Error: {e}"
             )
             raise e
 
@@ -168,8 +193,8 @@ class Wildberries(Marketplace):
                         }
                     )
                 if (
-                    len(prices.json()["data"]["listGoods"])
-                    < settings.WB_ITEMS_REFRESH_LIMIT
+                        len(prices.json()["data"]["listGoods"])
+                        < settings.WB_ITEMS_REFRESH_LIMIT
                 ):
                     break
             except HTTPError as e:
